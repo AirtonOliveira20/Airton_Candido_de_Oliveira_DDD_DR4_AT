@@ -1,0 +1,352 @@
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: cinepass-kafka
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-kraft-data:/var/lib/kafka/data
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: cinepass-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cinepass
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+  postgres:
+    image: postgres:17-alpine
+    container_name: cinepass-postgres
+    environment:
+      POSTGRES_USER: cinepass
+      POSTGRES_PASSWORD: cinepass
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:25432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cinepass -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  discovery-server:
+    build: ./discovery-server
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-discovery
+    ports:
+      - "127.0.0.1:8761:8761"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8761
+
+  pagamento-service:
+    build: ./pagamento-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-pagamento
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8082
+      DB_URL: jdbc:postgresql://postgres:5432/pagamento_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+
+  ingresso-service:
+    build: ./ingresso-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-ingresso
+    ports:
+      - "127.0.0.1:8083:8083"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8083
+      DB_URL: jdbc:postgresql://postgres:5432/ingresso_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+
+  reserva-service:
+    restart: on-failure
+    build: ./reserva-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-reserva
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      TEMPORAL_TARGET: temporal:7233
+      SERVER_PORT: 8081
+      DB_URL: jdbc:postgresql://postgres:5432/cinepass_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+      kafka:
+        condition: service_started
+      pagamento-service:
+        condition: service_started
+      ingresso-service:
+        condition: service_started
+
+  api-gateway:
+    build: ./api-gateway
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-gateway
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8080
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    depends_on:
+      discovery-server:
+        condition: service_started
+      reserva-service:
+        condition: service_started
+      pagamento-service:
+        condition: service_started
+      ingresso-service:
+        condition: service_started
+      notificacao-service:
+        condition: service_started
+      historico-service:
+        condition: service_started
+      auditoria-service:
+        condition: service_started
+
+  notificacao-service:
+    build: ./notificacao-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-notificacao
+    ports:
+      - "127.0.0.1:8084:8084"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8084
+      DB_URL: jdbc:postgresql://postgres:5432/notificacao_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  historico-service:
+    build: ./historico-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-historico
+    ports:
+      - "127.0.0.1:8085:8085"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8085
+      DB_URL: jdbc:postgresql://postgres:5432/historico_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  auditoria-service:
+    build: ./auditoria-service
+    volumes:
+      - ./logs:/var/log/cinepass
+    container_name: cinepass-auditoria
+    ports:
+      - "127.0.0.1:8086:8086"
+    environment:
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: 12201
+      LOG_DIR: /var/log/cinepass
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OPERATIONS_TOKEN: ${OPERATIONS_TOKEN:-}
+      SERVER_PORT: 8086
+      DB_URL: jdbc:postgresql://postgres:5432/auditoria_db
+      DB_USERNAME: cinepass
+      DB_PASSWORD: cinepass
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  temporal-postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgresql
+    ports:
+      - "127.0.0.1:7233:7233"
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+  temporal-ui:
+    image: temporalio/ui:2.36.0
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "127.0.0.1:28081:8080"
+    depends_on:
+      - temporal
+  zipkin:
+    image: openzipkin/zipkin:3
+    ports:
+      - "127.0.0.1:9411:9411"
+  graylog-mongodb:
+    image: mongo:7.0
+    volumes:
+      - graylog-mongodb-data:/data/db
+  graylog-opensearch:
+    image: opensearchproject/opensearch:2.15.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - graylog-opensearch-data:/usr/share/opensearch/data
+  graylog:
+    image: graylog/graylog:6.1
+    environment:
+      GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET:?Configure .env}
+      GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2:?Configure .env}
+      GRAYLOG_HTTP_BIND_ADDRESS: 0.0.0.0:9000
+      GRAYLOG_HTTP_EXTERNAL_URI: http://localhost:9000/
+      GRAYLOG_MONGODB_URI: mongodb://graylog-mongodb:27017/graylog
+      GRAYLOG_ELASTICSEARCH_HOSTS: http://graylog-opensearch:9200
+      GRAYLOG_SERVER_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:12201:12201/udp"
+    volumes:
+      - graylog-data:/usr/share/graylog/data
+    depends_on:
+      - graylog-mongodb
+      - graylog-opensearch
+    restart: on-failure
+  graylog-init:
+    image: python:3.13-alpine
+    command: python /bootstrap.py
+    environment:
+      GRAYLOG_ADMIN_PASSWORD: ${GRAYLOG_ADMIN_PASSWORD:?Configure .env}
+    volumes:
+      - ./infra/observability/graylog-bootstrap.py:/bootstrap.py:ro
+    depends_on:
+      - graylog
+    restart: on-failure
+
+volumes:
+  kafka-kraft-data:
+  temporal-postgres-data:
+  graylog-mongodb-data:
+  graylog-opensearch-data:
+  graylog-data:
+  postgres-data:

@@ -1,0 +1,15 @@
+meta {
+  name: Reenviar eventos (teste de duplicidade)
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/api/reservas/{{reservaId}}/eventos/reenvio
+  body: none
+  auth: none
+}
+
+docs {
+  Republica no Kafka os eventos da reserva com os MESMOS eventIds. Depois rode 12, 13 e 14 de novo: nada pode ter sido duplicado nem incrementado.
+}

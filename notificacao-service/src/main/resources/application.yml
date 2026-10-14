@@ -1,0 +1,83 @@
+server:
+  port: ${SERVER_PORT:8084}
+
+spring:
+  application:
+    name: notificacao-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:25432/notificacao_db}
+    username: ${DB_USERNAME:cinepass}
+    password: ${DB_PASSWORD:cinepass}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+  kafka:
+    template:
+      observation-enabled: true
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notificacao-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      observation-enabled: true
+      ack-mode: record
+      concurrency: ${KAFKA_CONSUMER_CONCURRENCY:3}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+cinepass:
+  operations-token: ${OPERATIONS_TOKEN:}
+  inbox:
+    max-attempts: 4
+    retry-ms: 1000
+    poll-ms: 500
+  kafka:
+    topico-reservas: cinepass.reserva.eventos
+    particoes: 3
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}
+    propagation:
+      type: W3C
+    export:
+      zipkin:
+        endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  file:
+    name: ${LOG_DIR:./logs}/${spring.application.name}.json
+  structured:
+    format:
+      file: ecs
+      console: ecs
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+      total-size-cap: 200MB
+  level:
+    org.hibernate.orm.jdbc.bind: "OFF"
+    org.springframework.web: WARN
+
+graylog:
+  host: ${GRAYLOG_HOST:localhost}
+  port: ${GRAYLOG_PORT:12201}

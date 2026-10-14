@@ -1,0 +1,15 @@
+meta {
+  name: Consultar Pagamento
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/pagamentos/{{pagamentoId}}
+  body: none
+  auth: none
+}
+
+docs {
+  O {{pagamentoId}} é preenchido automaticamente pelas requisições de reserva (03 a 05 e 08 a 10).
+}

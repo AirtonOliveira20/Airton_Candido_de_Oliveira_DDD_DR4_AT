@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="serviceName" source="spring.application.name" defaultValue="cinepass"/>
+    <springProperty scope="context" name="gelfHost" source="graylog.host" defaultValue="localhost"/>
+    <springProperty scope="context" name="gelfPort" source="graylog.port" defaultValue="12201"/>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/structured-console-appender.xml"/>
+    <include resource="org/springframework/boot/logging/logback/structured-file-appender.xml"/>
+    <appender name="GELF" class="de.siegmar.logbackgelf.GelfUdpAppender">
+        <graylogHost>${gelfHost}</graylogHost>
+        <graylogPort>${gelfPort}</graylogPort>
+        <encoder class="de.siegmar.logbackgelf.GelfEncoder">
+            <includeMdcData>true</includeMdcData>
+            <includeKeyValues>true</includeKeyValues>
+            <includeRawMessage>false</includeRawMessage>
+            <includeRootCauseData>false</includeRootCauseData>
+            <includeLevelName>true</includeLevelName>
+            <levelNameKey>logLevel</levelNameKey>
+            <staticField>service:${serviceName}</staticField>
+            <shortMessageLayout class="ch.qos.logback.classic.PatternLayout">
+                <pattern>%m%nopex</pattern>
+            </shortMessageLayout>
+            <fullMessageLayout class="ch.qos.logback.classic.PatternLayout">
+                <pattern>%m%nopex</pattern>
+            </fullMessageLayout>
+        </encoder>
+    </appender>
+    <appender name="ASYNC_GELF" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>2048</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <maxFlushTime>2000</maxFlushTime>
+        <appender-ref ref="GELF"/>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_GELF"/>
+    </root>
+</configuration>

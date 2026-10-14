@@ -1,0 +1,78 @@
+### Eureka
+GET http://localhost:8761
+
+### Filmes via Gateway
+GET http://localhost:8080/api/filmes
+
+### Sessoes via Gateway
+GET http://localhost:8080/api/sessoes
+
+### Caminho feliz
+POST http://localhost:8080/api/reservas
+Content-Type: application/json
+
+{
+  "clienteId": "33333333-3333-3333-3333-333333333333",
+  "sessaoId": "22222222-2222-2222-2222-222222222222",
+  "assentos": ["A1"],
+  "simularRecusaPagamento": false,
+  "simularFalhaIngresso": false
+}
+
+### Pagamento recusado
+POST http://localhost:8080/api/reservas
+Content-Type: application/json
+
+{
+  "clienteId": "33333333-3333-3333-3333-333333333333",
+  "sessaoId": "22222222-2222-2222-2222-222222222222",
+  "assentos": ["A2"],
+  "simularRecusaPagamento": true,
+  "simularFalhaIngresso": false
+}
+
+### Falha distribuida proposital - guarde reservaId e pagamentoId retornados no erro
+POST http://localhost:8080/api/reservas
+Content-Type: application/json
+
+{
+  "clienteId": "33333333-3333-3333-3333-333333333333",
+  "sessaoId": "22222222-2222-2222-2222-222222222222",
+  "assentos": ["A3"],
+  "simularRecusaPagamento": false,
+  "simularFalhaIngresso": true
+}
+
+### Troque pelo pagamentoId recebido acima
+GET http://localhost:8080/api/pagamentos/00000000-0000-0000-0000-000000000000
+
+### Troque pelo reservaId recebido acima
+GET http://localhost:8080/api/reservas/00000000-0000-0000-0000-000000000000
+
+
+### ===== Eventos (Kafka) =====
+
+### Reserva orquestrada pelo Temporal - publica eventos
+POST http://localhost:8080/api/reservas/temporal
+Content-Type: application/json
+X-Correlation-Id: demo-correlation-001
+
+{
+  "clienteId": "33333333-3333-3333-3333-333333333333",
+  "sessaoId": "22222222-2222-2222-2222-222222222222",
+  "assentos": ["B1"],
+  "simularRecusaPagamento": false,
+  "simularFalhaIngresso": false
+}
+
+### Auditoria pelo correlationId
+GET http://localhost:8080/api/auditoria/eventos?correlationId=demo-correlation-001
+
+### Historico do cliente
+GET http://localhost:8080/api/historico/clientes/33333333-3333-3333-3333-333333333333
+
+### Notificacoes do cliente
+GET http://localhost:8080/api/notificacoes?clienteId=33333333-3333-3333-3333-333333333333
+
+### Reenviar eventos da reserva (teste de duplicidade) - troque pelo reservaId
+POST http://localhost:8080/api/reservas/00000000-0000-0000-0000-000000000000/eventos/reenvio

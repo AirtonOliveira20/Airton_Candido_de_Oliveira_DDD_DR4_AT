@@ -1,0 +1,37 @@
+meta {
+  name: Temporal - Caminho Feliz (eventos)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/reservas/temporal
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "clienteId": "33333333-3333-3333-3333-333333333333",
+    "sessaoId": "22222222-2222-2222-2222-222222222222",
+    "assentos": ["B1"],
+    "simularRecusaPagamento": false,
+    "simularFalhaIngresso": false
+  }
+}
+
+headers {
+  X-Correlation-Id: {{correlationId}}
+}
+
+script:pre-request {
+  const { v4: uuidv4 } = require("uuid");
+  bru.setVar("correlationId", uuidv4());
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.reservaId) bru.setVar("reservaId", body.reservaId);
+  if (body && body.pagamentoId) bru.setVar("pagamentoId", body.pagamentoId);
+  if (body && body.clienteId) bru.setVar("clienteId", body.clienteId);
+}

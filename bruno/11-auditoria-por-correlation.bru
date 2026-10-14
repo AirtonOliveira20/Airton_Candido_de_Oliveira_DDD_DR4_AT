@@ -1,0 +1,15 @@
+meta {
+  name: Auditoria - eventos da operacao (correlationId)
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/auditoria/eventos?correlationId={{correlationId}}
+  body: none
+  auth: none
+}
+
+docs {
+  Use depois de 08, 09 ou 10. Funciona mesmo quando a reserva falhou e a resposta nao trouxe o reservaId.
+}
